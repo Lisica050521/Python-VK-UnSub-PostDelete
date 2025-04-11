@@ -137,13 +137,17 @@ def remove_users(limits, interrupt):
     offset = 0
     count = 1000
     removed = 0
-    limit_reached = False
+    limit_reached = limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]
     
-    while not interrupt.interrupted and not limit_reached:
+    if limit_reached:
+        reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
+        print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
+        return 0
+    
+    while not interrupt.interrupted:
         if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
             reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
             print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
-            limit_reached = True
             break
             
         response = vk_api_request('groups.getMembers', {
@@ -181,7 +185,7 @@ def main(interrupt):
         deleted_posts = delete_posts(limits, interrupt)
         print(f"\nУдалено постов в этой сессии: {deleted_posts}")
         
-        if not interrupt.interrupted and limits['users_deleted'] < config.config["MAX_USERS_PER_DAY"]:
+        if not interrupt.interrupted:
             print("\n[2] Удаление подписчиков...")
             removed_users = remove_users(limits, interrupt)
             print(f"\nУдалено подписчиков в этой сессии: {removed_users}")
@@ -189,12 +193,12 @@ def main(interrupt):
     except Exception as e:
         print(f"\nОшибка: {e}")
     finally:
+        if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
+            reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
+            print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
+        
         manage_limits('write', limits)
         print("\nИтоговые лимиты:")
         print(f"Постов: {limits['posts_deleted']}/{config.config['MAX_POSTS_PER_HOUR']}")
         print(f"Подписчиков: {limits['users_deleted']}/{config.config['MAX_USERS_PER_DAY']}")
         print("\n📊 Статистика сохранена!")
-
-if __name__ == "__main__":
-    interrupt = GracefulInterrupt()
-    main(interrupt)
