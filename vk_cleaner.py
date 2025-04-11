@@ -137,17 +137,16 @@ def remove_users(limits, interrupt):
     offset = 0
     count = 1000
     removed = 0
-    limit_reached = limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]
     
-    if limit_reached:
+    # Проверяем лимит в начале
+    if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
         reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
         print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
         return 0
     
     while not interrupt.interrupted:
+        # Проверяем лимит перед каждым запросом
         if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
-            reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
-            print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
             break
             
         response = vk_api_request('groups.getMembers', {
@@ -169,7 +168,12 @@ def remove_users(limits, interrupt):
                 print(f"Удален подписчик {user_id} ({removed} в этой сессии)")
         
         offset += count
-        
+    
+    # Если вышли по лимиту, выводим сообщение
+    if not interrupt.interrupted and limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
+        reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
+        print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
+    
     return removed
 
 def main(interrupt):
@@ -193,10 +197,6 @@ def main(interrupt):
     except Exception as e:
         print(f"\nОшибка: {e}")
     finally:
-        if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
-            reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
-            print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
-        
         manage_limits('write', limits)
         print("\nИтоговые лимиты:")
         print(f"Постов: {limits['posts_deleted']}/{config.config['MAX_POSTS_PER_HOUR']}")
