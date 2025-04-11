@@ -21,7 +21,7 @@ class ConsoleText(QTextEdit):
 class VKCleanerApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VK Cleaner GUI")
+        self.setWindowTitle("VK UnSub & PostDelete")
         self.setGeometry(100, 100, 800, 600)
         
         self.log_queue = queue.Queue()
