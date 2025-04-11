@@ -1,78 +1,100 @@
-import customtkinter as ctk
+import sys
 import threading
+import queue
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QVBoxLayout, QWidget, 
+    QLabel, QLineEdit, QPushButton, QTextEdit, QFrame
+)
+from PyQt6.QtCore import Qt, QTimer
+import requests
 import config
 from vk_cleaner import main, GracefulInterrupt
-import sys
-import requests
-import queue
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
-
-class ConsoleText(ctk.CTkTextbox):
+class ConsoleText(QTextEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.bind("<Control-c>", self.copy_text)
-        self.bind("<Control-v>", self.paste_text)
-        
-    def copy_text(self, event=None):
-        self.clipboard_clear()
-        text = self.get("sel.first", "sel.last")
-        self.clipboard_append(text)
-        return "break"
-        
-    def paste_text(self, event=None):
-        text = self.clipboard_get()
-        self.insert("insert", text)
-        return "break"
+        self.setReadOnly(False)
+        self.setFontFamily("Consolas")
+        self.setFontPointSize(10)
+        self.setStyleSheet("background-color: #2b2b2b; color: white;")
 
-class VKCleanerApp(ctk.CTk):
+class VKCleanerApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.title("VK Cleaner GUI")
-        self.geometry("800x600")
+        self.setWindowTitle("VK Cleaner GUI")
+        self.setGeometry(100, 100, 800, 600)
         
         self.log_queue = queue.Queue()
         self.thread = None
         self.interrupt = GracefulInterrupt()
+        
         self.setup_ui()
-        self.after(100, self.process_queue)
+        
+        # Таймер для обработки очереди логов
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.process_queue)
+        self.timer.start(100)
 
     def setup_ui(self):
-        self.main_frame = ctk.CTkFrame(self)
-        self.main_frame.pack(pady=20, padx=20, fill="both", expand=True)
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        layout = QVBoxLayout(central_widget)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        ctk.CTkLabel(self.main_frame, text="Токен VK:").pack(pady=(10, 0))
-        self.token_entry = ctk.CTkEntry(self.main_frame, width=400)
-        self.token_entry.pack()
-        self.token_entry.insert(0, config.config["ACCESS_TOKEN"])
+        # Токен VK
+        token_label = QLabel("Токен VK:")
+        self.token_entry = QLineEdit()
+        self.token_entry.setText(config.config["ACCESS_TOKEN"])
+        layout.addWidget(token_label)
+        layout.addWidget(self.token_entry)
 
-        ctk.CTkLabel(self.main_frame, text="ID Группы:").pack(pady=(10, 0))
-        self.group_id_entry = ctk.CTkEntry(self.main_frame, width=400)
-        self.group_id_entry.pack()
-        self.group_id_entry.insert(0, config.config["GROUP_ID"])
+        # ID Группы
+        group_id_label = QLabel("ID Группы:")
+        self.group_id_entry = QLineEdit()
+        self.group_id_entry.setText(config.config["GROUP_ID"])
+        layout.addWidget(group_id_label)
+        layout.addWidget(self.group_id_entry)
 
-        self.btn_frame = ctk.CTkFrame(self.main_frame)
-        self.btn_frame.pack(pady=10)
-        ctk.CTkButton(self.btn_frame, text="Сохранить", command=self.save_config).pack(side="left", padx=5)
-        ctk.CTkButton(self.btn_frame, text="Проверить токен", command=self.check_token).pack(side="left", padx=5)
+        # Кнопки
+        btn_frame = QFrame()
+        btn_layout = QVBoxLayout(btn_frame)
+        btn_layout.setSpacing(5)
+        
+        self.save_btn = QPushButton("Сохранить")
+        self.save_btn.clicked.connect(self.save_config)
+        
+        self.check_token_btn = QPushButton("Проверить токен")
+        self.check_token_btn.clicked.connect(self.check_token)
+        
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.check_token_btn)
+        layout.addWidget(btn_frame)
 
-        self.log_text = ConsoleText(self.main_frame, width=750, height=300, 
-                                 wrap="word", font=("Consolas", 12))
-        self.log_text.pack(pady=10, fill="both", expand=True)
+        # Лог
+        self.log_text = ConsoleText()
+        layout.addWidget(self.log_text)
 
-        self.control_frame = ctk.CTkFrame(self.main_frame)
-        self.control_frame.pack(pady=10)
-        self.start_btn = ctk.CTkButton(self.control_frame, text="Старт", 
-                                     command=self.start_cleaner, fg_color="green")
-        self.start_btn.pack(side="left", padx=20)
-        self.stop_btn = ctk.CTkButton(self.control_frame, text="Стоп", 
-                                    command=self.stop_cleaner, fg_color="red")
-        self.stop_btn.pack(side="left", padx=20)
+        # Управление
+        control_frame = QFrame()
+        control_layout = QVBoxLayout(control_frame)
+        
+        self.start_btn = QPushButton("Старт")
+        self.start_btn.setStyleSheet("background-color: green; color: white;")
+        self.start_btn.clicked.connect(self.start_cleaner)
+        
+        self.stop_btn = QPushButton("Стоп")
+        self.stop_btn.setStyleSheet("background-color: red; color: white;")
+        self.stop_btn.clicked.connect(self.stop_cleaner)
+        
+        control_layout.addWidget(self.start_btn)
+        control_layout.addWidget(self.stop_btn)
+        layout.addWidget(control_frame)
 
     def save_config(self):
-        config.config["ACCESS_TOKEN"] = self.token_entry.get()
-        config.config["GROUP_ID"] = self.group_id_entry.get()
+        config.config["ACCESS_TOKEN"] = self.token_entry.text()
+        config.config["GROUP_ID"] = self.group_id_entry.text()
         config.save_config(config.config)
         self.log("Настройки сохранены!")
 
@@ -132,14 +154,19 @@ class VKCleanerApp(ctk.CTk):
     def process_queue(self):
         while not self.log_queue.empty():
             text = self.log_queue.get()
-            self.log_text.insert("end", text)
-            self.log_text.see("end")
-        self.after(100, self.process_queue)
+            self.log_text.insertPlainText(text)
+            self.log_text.verticalScrollBar().setValue(
+                self.log_text.verticalScrollBar().maximum()
+            )
 
     def log(self, message):
-        self.log_text.insert("end", message + "\n")
-        self.log_text.see("end")
+        self.log_text.insertPlainText(message + "\n")
+        self.log_text.verticalScrollBar().setValue(
+            self.log_text.verticalScrollBar().maximum()
+        )
 
 if __name__ == "__main__":
-    app = VKCleanerApp()
-    app.mainloop()
+    app = QApplication(sys.argv)
+    window = VKCleanerApp()
+    window.show()
+    sys.exit(app.exec())
