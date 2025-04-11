@@ -7,7 +7,7 @@ DEFAULT_CONFIG = {
     "ACCESS_TOKEN": "",
     "GROUP_ID": "",
     "VERSION": "5.131",
-    "MAX_USERS_PER_DAY": 20,
+    "MAX_USERS_PER_DAY": 5,
     "MAX_POSTS_PER_HOUR": 100,
     "DELAY": 2
 }

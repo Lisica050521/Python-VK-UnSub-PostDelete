@@ -2,7 +2,7 @@ import json
 import time
 import requests
 import config
-from datetime import datetime
+from datetime import datetime, timedelta
 
 LOG_FILE = 'vk_limits.log'
 VK_API_URL = 'https://api.vk.com/method/'
@@ -56,7 +56,10 @@ def vk_api_request(method, params):
 def safe_delete_post(group_id, post_id, limits, interrupt):
     if interrupt.interrupted:
         return False
+        
     if limits['posts_deleted'] >= config.config["MAX_POSTS_PER_HOUR"]:
+        reset_time = datetime.fromtimestamp(limits['last_post_reset'] + 3600)
+        print(f"\nЛимит постов достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
         return False
     
     result = vk_api_request('wall.delete', {
@@ -73,7 +76,10 @@ def safe_delete_post(group_id, post_id, limits, interrupt):
 def safe_remove_user(group_id, user_id, limits, interrupt):
     if interrupt.interrupted:
         return False
+        
     if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
+        reset_time = datetime.fromtimestamp(limits['last_user_reset'] + 86400)
+        print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
         return False
     
     result = vk_api_request('groups.removeUser', {
@@ -95,7 +101,7 @@ def delete_posts(limits, interrupt):
     attempts = 0
     
     while not interrupt.interrupted and attempts < max_attempts:
-        if interrupt.interrupted:
+        if limits['posts_deleted'] >= config.config["MAX_POSTS_PER_HOUR"]:
             break
             
         response = vk_api_request('wall.get', {
@@ -110,15 +116,18 @@ def delete_posts(limits, interrupt):
             continue
             
         if 'items' not in response.get('response', {}):
+            print("\nПосты закончились")
             break
             
         items = response['response']['items']
         if not items:
+            print("\nБольше нет постов для удаления")
             break
             
         for post in items:
-            if interrupt.interrupted:
+            if interrupt.interrupted or limits['posts_deleted'] >= config.config["MAX_POSTS_PER_HOUR"]:
                 break
+                
             if safe_delete_post(int(config.config["GROUP_ID"]), post['id'], limits, interrupt):
                 deleted += 1
                 print(f"Удален пост {post['id']} ({deleted} в этой сессии)")
@@ -134,6 +143,9 @@ def remove_users(limits, interrupt):
     removed = 0
     
     while not interrupt.interrupted:
+        if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
+            break
+            
         response = vk_api_request('groups.getMembers', {
             'group_id': abs(int(config.config["GROUP_ID"])),
             'count': count,
@@ -141,11 +153,13 @@ def remove_users(limits, interrupt):
         })
         
         if not response or 'items' not in response.get('response', {}):
+            print("\nПодписчики закончились")
             break
             
         for user_id in response['response']['items']:
-            if interrupt.interrupted:
+            if interrupt.interrupted or limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
                 break
+                
             if safe_remove_user(int(config.config["GROUP_ID"]), user_id, limits, interrupt):
                 removed += 1
                 print(f"Удален подписчик {user_id} ({removed} в этой сессии)")
@@ -157,7 +171,7 @@ def remove_users(limits, interrupt):
 def main(interrupt):
     limits = manage_limits('read')
     
-    print("=== VK Cleaner ===")
+    print("\n=== VK Cleaner ===")
     print(f"Лимиты:")
     print(f"Постов: {limits['posts_deleted']}/{config.config['MAX_POSTS_PER_HOUR']} (час)")
     print(f"Подписчиков: {limits['users_deleted']}/{config.config['MAX_USERS_PER_DAY']} (день)")
@@ -165,21 +179,21 @@ def main(interrupt):
     try:
         print("\n[1] Удаление постов...")
         deleted_posts = delete_posts(limits, interrupt)
-        print(f"Удалено постов: {deleted_posts}")
+        print(f"\nУдалено постов в этой сессии: {deleted_posts}")
         
-        if not interrupt.interrupted:
+        if not interrupt.interrupted and limits['users_deleted'] < config.config["MAX_USERS_PER_DAY"]:
             print("\n[2] Удаление подписчиков...")
             removed_users = remove_users(limits, interrupt)
-            print(f"Удалено подписчиков: {removed_users}")
+            print(f"\nУдалено подписчиков в этой сессии: {removed_users}")
         
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"\nОшибка: {e}")
     finally:
         manage_limits('write', limits)
         print("\nИтоговые лимиты:")
         print(f"Постов: {limits['posts_deleted']}/{config.config['MAX_POSTS_PER_HOUR']}")
         print(f"Подписчиков: {limits['users_deleted']}/{config.config['MAX_USERS_PER_DAY']}")
-        print("📊 Статистика сохранена!")
+        print("\n📊 Статистика сохранена!")
 
 if __name__ == "__main__":
     interrupt = GracefulInterrupt()
