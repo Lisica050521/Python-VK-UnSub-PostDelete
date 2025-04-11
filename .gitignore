@@ -1,0 +1,14 @@
+# Python
+pycache/
+*.py[cod]
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Логи
+*.log
+
+.vscode/
+.idea/
