@@ -56,10 +56,7 @@ def vk_api_request(method, params):
 def safe_delete_post(group_id, post_id, limits, interrupt):
     if interrupt.interrupted:
         return False
-        
     if limits['posts_deleted'] >= config.config["MAX_POSTS_PER_HOUR"]:
-        reset_time = datetime.fromtimestamp(limits['last_post_reset'] + 3600)
-        print(f"\nЛимит постов достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
         return False
     
     result = vk_api_request('wall.delete', {
@@ -76,10 +73,7 @@ def safe_delete_post(group_id, post_id, limits, interrupt):
 def safe_remove_user(group_id, user_id, limits, interrupt):
     if interrupt.interrupted:
         return False
-        
     if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
-        reset_time = datetime.fromtimestamp(limits['last_user_reset'] + 86400)
-        print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
         return False
     
     result = vk_api_request('groups.removeUser', {
@@ -102,6 +96,8 @@ def delete_posts(limits, interrupt):
     
     while not interrupt.interrupted and attempts < max_attempts:
         if limits['posts_deleted'] >= config.config["MAX_POSTS_PER_HOUR"]:
+            reset_time = datetime.fromtimestamp(limits['last_post_reset'] + 3600)
+            print(f"\nЛимит постов достигнут! Доступно после {reset_time.strftime('%d.%m.%Y %H:%M')}")
             break
             
         response = vk_api_request('wall.get', {
@@ -141,9 +137,13 @@ def remove_users(limits, interrupt):
     offset = 0
     count = 1000
     removed = 0
+    limit_reached = False
     
-    while not interrupt.interrupted:
+    while not interrupt.interrupted and not limit_reached:
         if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
+            reset_time = datetime.fromtimestamp(limits['last_user_reset']).replace(hour=0, minute=1) + timedelta(days=1)
+            print(f"\nЛимит подписчиков достигнут! Во избежание блокировки запустите скрипт после {reset_time.strftime('%d.%m.%Y %H:%M')}")
+            limit_reached = True
             break
             
         response = vk_api_request('groups.getMembers', {
