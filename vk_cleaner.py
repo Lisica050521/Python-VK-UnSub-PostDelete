@@ -84,12 +84,6 @@ def vk_api_request(method, params, interrupt):
                 
                 return vk_api_request(method, params, interrupt)
             
-            if error_code == 15:
-                print("⏩ Обнаружен создатель группы. Удалите себя вручную через настройки сообщества")
-            else:
-                print(f"⛔ Ошибка API {error_code}: {error['error_msg']}")
-            return None
-            
         # Сброс задержки при успешном запросе
         vk_api_request.current_delay = 5
         return result
@@ -122,6 +116,10 @@ def safe_remove_user(group_id, user_id, limits, interrupt):
     if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
         return False
     
+    # 1. Текущий пользователь (скрипт не может удалить сам себя) - пропускаем БЕЗ сообщения
+    if user_id == int(config.config.get("USER_ID", 0)):
+        return False
+    
     result = vk_api_request('groups.removeUser', {
         'group_id': abs(group_id),
         'user_id': user_id
@@ -137,9 +135,10 @@ def safe_remove_user(group_id, user_id, limits, interrupt):
         
     error = result.get('error', {})
     error_code = error.get('error_code')
-    
-    if error_code in [15, 7]:  # Админы/создатели
-        print(f"⏩ Обнаружен создатель группы. Удалите себя вручную через настройки сообщества")
+
+    if error_code in [100, 15, 7]:  # Админы/создатели
+        print(f"⏩ Обнаружен руководитель группы (ID: {user_id}). Удалите его вручную через:")
+        print("Управление сообществом → Участники → Исключить")
         return False
     elif error_code == 9:  # Флуд-контроль
         delay = config.config.get("FLOOD_DELAY", 10)
@@ -147,7 +146,7 @@ def safe_remove_user(group_id, user_id, limits, interrupt):
         time.sleep(delay)
         return safe_remove_user(group_id, user_id, limits, interrupt)
     else:
-        print(f"Ошибка удаления {user_id}: {error.get('error_msg', 'Unknown error')}")
+        print(f"⛔ Ошибка при удалении {user_id}: {error.get('error_msg', 'Неизвестная ошибка')}")
         return False
     
 def delete_posts(limits, interrupt):
@@ -202,9 +201,7 @@ def remove_users(limits, interrupt):
     removed = 0
     retry_count = 0
     max_retries = config.config.get("API_RETRY_LIMIT", 3)
-    creator_detected = False
-    
-    print("\n[2] Удаление подписчиков...")
+    has_regular_members = False
     
     if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
         reset_time = datetime.fromtimestamp(limits['last_user_reset']) + timedelta(days=1)
@@ -230,22 +227,28 @@ def remove_users(limits, interrupt):
             
         if 'error' in response:
             error = response['error']
-            print(f"⛔ Ошибка API [{error['error_code']}]: {error['error_msg']}")
+            error_code = error.get('error_code')
+            
+            if error_code in [15, 7, 100]:  # Админы/создатели/руководители 
+                continue
+            elif error_code == 9:  # Флуд-контроль
+                delay = config.config.get("FLOOD_DELAY", 10)
+                print(f"⏳ Флуд-контроль. Ждем {delay} сек...")
+                time.sleep(delay)
+                continue
+            else:
+                print(f"⛔ Ошибка API [{error_code}]: {error.get('error_msg', 'Неизвестная ошибка')}")
+            
             retry_count += 1
             continue
             
         members = response.get('response', {}).get('items', [])
         if not members:
-            if removed > 0:
-                if creator_detected:
-                    print("\n\n🎉 Поздравляю! Все подписчики удалены!")
-                    print("Для завершения удалите себя вручную через:")
-                    print("Управление сообществом → Участники → Исключить")
-                else:
-                    print("\nПодписчики закончились")
-                    print("\n🎉 Поздравляю! Все подписчики удалены!")
-                    print("Для завершения удалите себя вручную через:")
-                    print("Управление сообществом → Участники → Исключить")
+            if removed > 0:  # Если был удален хотя бы один обычный подписчик
+                print("\nПодписчики закончились")
+                print("\n🎉 Поздравляю! Все подписчики удалены!")
+                print("Для завершения удалите руководителей группы вручную через:")
+                print("Управление сообществом → Участники → Исключить")
             else:
                 print("\nВ сообществе нет подписчиков для удаления")
             break
@@ -257,10 +260,11 @@ def remove_users(limits, interrupt):
             user_id = member['id']
             role = member.get('role', 'member')
             
-            if role == 'creator':
-                creator_detected = True
+            if role != 'member':  # Пропускаем всех руководителей
                 continue
                 
+            # Обычные подписчики
+            has_regular_members = True
             if safe_remove_user(int(config.config["GROUP_ID"]), user_id, limits, interrupt):
                 removed += 1
                 print(f"❌ Удалён подписчик {user_id} ({removed}/{config.config['MAX_USERS_PER_DAY']})")
@@ -296,7 +300,7 @@ def main(interrupt):
             print(f"\nУдалено постов: {deleted_posts}")
         
         # Обработка подписчиков
-        if not interrupt.interrupted:
+        if not interrupt.interrupted and limits['users_deleted'] < config.config["MAX_USERS_PER_DAY"]:
             print("\n[2] Удаление подписчиков...")
             removed_users = remove_users(limits, interrupt)
             print(f"\nУдалено подписчиков: {removed_users}")

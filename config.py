@@ -8,8 +8,8 @@ DEFAULT_CONFIG = {
     "ACCESS_TOKEN": "",
     "GROUP_ID": "",
     "VERSION": "5.131",
-    "MAX_USERS_PER_DAY": 2,          # Лимит удалений в день
-    "MAX_POSTS_PER_HOUR": 2,         # Лимит удалений в час
+    "MAX_USERS_PER_DAY": 3,          # Лимит удалений в день
+    "MAX_POSTS_PER_HOUR": 3,         # Лимит удалений в час
     "DELAY": 1,                      # Основная задержка между операциями (сек)
     "REQUEST_DELAY": 3,              # Задержка между запросами (сек)
     "FLOOD_DELAY": 10,               # Задержка при флуд-контроле
