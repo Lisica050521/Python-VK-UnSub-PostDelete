@@ -18,6 +18,11 @@ LOG_FILE = get_log_path()
 
 VK_API_URL = 'https://api.vk.com/method/'
 
+def get_next_day_reset(last_reset_timestamp):
+    """Возвращает 00:01 следующего дня для подписчиков"""
+    last_reset_date = datetime.fromtimestamp(last_reset_timestamp).date()
+    return datetime.combine(last_reset_date + timedelta(days=1), datetime.min.time().replace(minute=1))
+
 class GracefulInterrupt:
     def __init__(self):
         self.interrupted = False
@@ -32,13 +37,17 @@ def manage_limits(action, data=None):
                 limits = json.load(f)
             
             current_time = time.time()
-            if current_time - limits['last_user_reset'] > 86400:
-                limits['users_deleted'] = 0
-                limits['last_user_reset'] = current_time
+            # Для постов (оставляем часовой сброс)
             if current_time - limits['last_post_reset'] > 3600:
                 limits['posts_deleted'] = 0
-                limits['last_post_reset'] = current_time
-            
+                limits['last_post_reset'] = current_time  # Сброс по фактическому времени
+
+            # Для подписчиков (суточный сброс в 00:01)
+            next_reset = get_next_day_reset(limits['last_user_reset'])
+            if current_time >= next_reset.timestamp():
+                limits['users_deleted'] = 0
+                limits['last_user_reset'] = int(next_reset.timestamp())
+                        
             return limits
         except (FileNotFoundError, json.JSONDecodeError):
             return {
@@ -52,7 +61,6 @@ def manage_limits(action, data=None):
             json.dump(data, f, indent=2)
 
 def vk_api_request(method, params, interrupt):
-    """Улучшенный запрос к API с обработкой прерываний и лимитов"""
     params.update({
         'access_token': config.config["ACCESS_TOKEN"],
         'v': config.config["VERSION"],
@@ -159,7 +167,7 @@ def delete_posts(limits, interrupt):
     while not interrupt.interrupted and attempts < max_attempts:
         if limits['posts_deleted'] >= config.config["MAX_POSTS_PER_HOUR"]:
             reset_time = datetime.fromtimestamp(limits['last_post_reset'] + 3600)
-            print(f"\nЛимит постов достигнут! Доступно после {reset_time.strftime('%d.%m.%Y %H:%M')}")
+            print(f"\nЛимит удаления постов достигнут! Вернитесь после {reset_time.strftime('%d.%m.%Y %H:%M')}")
             break
             
         response = vk_api_request('wall.get', {
@@ -202,10 +210,12 @@ def remove_users(limits, interrupt):
     retry_count = 0
     max_retries = config.config.get("API_RETRY_LIMIT", 3)
     has_regular_members = False
+
+    #Вычисляем reset_time один раз в начале функции
+    reset_time = get_next_day_reset(limits['last_user_reset'])
     
     if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
-        reset_time = datetime.fromtimestamp(limits['last_user_reset']) + timedelta(days=1)
-        print(f"⏳ Лимит удалений достигнут! Доступно после {reset_time.strftime('%d.%m.%Y %H:%M')}")
+        print(f"⏳ Лимит удалений подписчиков достигнут! Вернитесь после {reset_time.strftime('%d.%m.%Y %H:%M')}")
         return 0
     
     while not interrupt.interrupted and retry_count < max_retries:
@@ -244,13 +254,11 @@ def remove_users(limits, interrupt):
             
         members = response.get('response', {}).get('items', [])
         if not members:
-            if removed > 0:  # Если был удален хотя бы один обычный подписчик
+            if removed > 0 and not has_regular_members:
                 print("\nПодписчики закончились")
                 print("\n🎉 Поздравляю! Все подписчики удалены!")
                 print("Для завершения удалите руководителей группы вручную через:")
                 print("Управление сообществом → Участники → Исключить")
-            else:
-                print("\nВ сообществе нет подписчиков для удаления")
             break
             
         for member in members:
@@ -270,7 +278,7 @@ def remove_users(limits, interrupt):
                 print(f"❌ Удалён подписчик {user_id} ({removed}/{config.config['MAX_USERS_PER_DAY']})")
                 
                 if limits['users_deleted'] >= config.config["MAX_USERS_PER_DAY"]:
-                    print("⚠️ Достигнут дневной лимит удалений!")
+                    print(f"⚠️ Достигнут дневной лимит удалений! Вернитесь после {reset_time.strftime('%d.%m.%Y %H:%M')}")
                     break
                     
         offset += len(members)
