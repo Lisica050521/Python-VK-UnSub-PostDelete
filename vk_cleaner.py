@@ -76,6 +76,11 @@ def vk_api_request(method, params, interrupt):
             error = result['error']
             error_code = error.get('error_code')
             
+            # Обработка невалидного токена
+            if error_code == 4:  # User authorization failed
+                print("\n❌ Ошибка: Токен не активен. Получите новый токен по инструкции в приложении")
+                return None
+        
             # Обработка флуд-контроля и Rate Limit
             if error_code in [9, 29]:
                 # Динамическая задержка: начнем с 5 сек, удваиваем при каждом повторе (макс 300 сек)

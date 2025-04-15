@@ -112,8 +112,17 @@ class VKCleanerApp(QMainWindow):
             
             if 'response' in data:
                 self.log(f"✓ Токен действителен! ID: {data['response'][0]['id']}")
+            
             else:
-                self.log(f"× Ошибка: {data.get('error', {}).get('error_msg', 'Неизвестная ошибка')}")
+                error_data = data.get('error', {})
+                error_code = error_data.get('error_code')
+                error_msg = error_data.get('error_msg', 'Неизвестная ошибка')
+
+                # Проверяем и код ошибки, и текст
+                if error_code == 5 or "(4)" in error_msg:
+                    self.log("❌ Ошибка: Токен не активен. Получите новый токен по инструкции в приложении")
+                else:
+                    self.log(f"× Ошибка: {error_msg}")
         except Exception as e:
             self.log(f"! Ошибка проверки: {str(e)}")
 
