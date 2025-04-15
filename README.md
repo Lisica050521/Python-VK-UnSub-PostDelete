@@ -34,7 +34,7 @@
 **1. Клонировать репозиторий:**  
 ```bash
 git clone https://github.com/Lisica050521/Python-VK-UnSub-PostDelete.git
-cd vk-cleaner
+cd Python-VK-UnSub-PostDelete
 ```
 
 **2. Установить зависимости**
