@@ -110,10 +110,10 @@ https://oauth.vk.com/authorize?client_id=6121396&scope=groups,wall,manage&respon
 ```
 
 ## 🖼️ Интерфейс
-![Интерфейс VK Cleaner](images/interface.png)
+![Интерфейс VK UnSub & PostDelete](images/interface.png)
 
 ## 🖼️ Работа с лимитами наглядно
-![Интерфейс VK Cleaner](images/limits.png)
+![Интерфейс VK UnSub & PostDelete](images/limits.png)
 
 ## ⚠️ Ограничения
 - Не более 1000 подписчиков в день
